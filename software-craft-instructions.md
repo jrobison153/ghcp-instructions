@@ -175,8 +175,11 @@ function processPayment(amount, paymentGateway) {
 
 ### Cyclomatic Complexity
 - Keep function and method complexity low (for example, target 3 or less when practical).
+- Limit functions/methods to approximately 30 lines of code (one screen in a typical IDE).
+- Extract blocks of code into well-named helper functions.
+- Compose functions from other well-named functions so code reads like a book.
+- Each function should tell a clear story at a single level of abstraction.
 - Avoid deeply nested conditionals and loops.
-- Extract complex logic into smaller, well-named helper functions.
 - Use early returns to reduce nesting.
 - Prefer guard clauses over nested condition blocks.
 
@@ -260,6 +263,163 @@ function getStandardDiscount(total) {
 
 function getReferralDiscount(customer) {
   return customer.hasReferralCode ? 0.05 : 0;
+}
+```
+
+**Example - Functions That Read Like a Book:**
+```
+// ❌ Bad: Long function with mixed abstraction levels (60+ lines)
+function processOrder(orderId) {
+  const order = database.query('SELECT * FROM orders WHERE id = ?', [orderId]);
+  if (!order) throw new Error('Order not found');
+  
+  if (order.status !== 'pending') throw new Error('Order already processed');
+  
+  let totalAmount = 0;
+  for (const item of order.items) {
+    const product = database.query('SELECT * FROM products WHERE id = ?', [item.productId]);
+    if (!product) throw new Error('Product not found');
+    if (product.stock < item.quantity) throw new Error('Insufficient stock');
+    totalAmount += product.price * item.quantity;
+  }
+  
+  const taxRate = order.shippingAddress.country === 'US' ? 0.08 : 0.20;
+  const tax = totalAmount * taxRate;
+  const finalAmount = totalAmount + tax;
+  
+  const payment = paymentGateway.charge(order.customerId, finalAmount);
+  if (!payment.success) throw new Error('Payment failed');
+  
+  for (const item of order.items) {
+    database.execute(
+      'UPDATE products SET stock = stock - ? WHERE id = ?',
+      [item.quantity, item.productId]
+    );
+  }
+  
+  database.execute('UPDATE orders SET status = ? WHERE id = ?', ['completed', orderId]);
+  
+  const customer = database.query('SELECT * FROM customers WHERE id = ?', [order.customerId]);
+  emailService.send(
+    customer.email,
+    'Order Confirmation',
+    `Your order ${orderId} has been processed. Total: $${finalAmount}`
+  );
+  
+  return { orderId, amount: finalAmount, status: 'completed' };
+}
+
+// ✅ Good: Reads like a book (each function ~10-30 lines)
+function processOrder(orderId) {
+  const order = getValidatedOrder(orderId);
+  const totalAmount = calculateOrderTotal(order);
+  const finalAmount = applyTaxes(totalAmount, order.shippingAddress);
+  
+  processPayment(order.customerId, finalAmount);
+  updateInventory(order.items);
+  markOrderComplete(orderId);
+  sendConfirmationEmail(order, orderId, finalAmount);
+  
+  return createOrderResult(orderId, finalAmount);
+}
+
+function getValidatedOrder(orderId) {
+  const order = findOrderById(orderId);
+  ensureOrderIsPending(order);
+  return order;
+}
+
+function findOrderById(orderId) {
+  const order = database.query('SELECT * FROM orders WHERE id = ?', [orderId]);
+  if (!order) throw new Error('Order not found');
+  return order;
+}
+
+function ensureOrderIsPending(order) {
+  if (order.status !== 'pending') {
+    throw new Error('Order already processed');
+  }
+}
+
+function calculateOrderTotal(order) {
+  let total = 0;
+  for (const item of order.items) {
+    validateItemAvailability(item);
+    total += calculateItemPrice(item);
+  }
+  return total;
+}
+
+function validateItemAvailability(item) {
+  const product = findProductById(item.productId);
+  ensureSufficientStock(product, item.quantity);
+}
+
+function findProductById(productId) {
+  const product = database.query('SELECT * FROM products WHERE id = ?', [productId]);
+  if (!product) throw new Error('Product not found');
+  return product;
+}
+
+function ensureSufficientStock(product, requestedQuantity) {
+  if (product.stock < requestedQuantity) {
+    throw new Error('Insufficient stock');
+  }
+}
+
+function calculateItemPrice(item) {
+  const product = findProductById(item.productId);
+  return product.price * item.quantity;
+}
+
+function applyTaxes(amount, shippingAddress) {
+  const taxRate = getTaxRate(shippingAddress.country);
+  const tax = amount * taxRate;
+  return amount + tax;
+}
+
+function getTaxRate(country) {
+  return country === 'US' ? 0.08 : 0.20;
+}
+
+function processPayment(customerId, amount) {
+  const payment = paymentGateway.charge(customerId, amount);
+  if (!payment.success) throw new Error('Payment failed');
+}
+
+function updateInventory(items) {
+  for (const item of items) {
+    decrementProductStock(item.productId, item.quantity);
+  }
+}
+
+function decrementProductStock(productId, quantity) {
+  database.execute(
+    'UPDATE products SET stock = stock - ? WHERE id = ?',
+    [quantity, productId]
+  );
+}
+
+function markOrderComplete(orderId) {
+  database.execute('UPDATE orders SET status = ? WHERE id = ?', ['completed', orderId]);
+}
+
+function sendConfirmationEmail(order, orderId, amount) {
+  const customer = findCustomerById(order.customerId);
+  const message = buildConfirmationMessage(orderId, amount);
+  emailService.send(customer.email, 'Order Confirmation', message);
+}
+
+function findCustomerById(customerId) {
+  return database.query('SELECT * FROM customers WHERE id = ?', [customerId]);
+}
+
+function buildConfirmationMessage(orderId, amount) {
+  return `Your order ${orderId} has been processed. Total: $${amount}`;
+}
+
+function createOrderResult(orderId, amount) {
+  return { orderId, amount, status: 'completed' };
 }
 ```
 
