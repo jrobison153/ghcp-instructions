@@ -4,6 +4,9 @@ These instructions capture stack-agnostic software engineering practices from th
 
 ## Code Quality Standards
 
+### Libraries and SDK usge
+- Use the latest APIs and SDKs for today's date
+
 ### Modularity
 - Break functionality into small, focused modules.
 - Ensure each module has a single, well-defined responsibility.
@@ -477,6 +480,7 @@ function processRefund(order) {
 ```
 
 ### Expressive Code
+- Use short answers preferring simplicity to cleverness.
 - Use descriptive names for functions, variables, classes, and methods.
 - Ensure names communicate intent and domain meaning.
 - Avoid abbreviations unless widely understood in your domain.
